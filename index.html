@@ -598,6 +598,8 @@
   <input type="range" id="liftRange" min="0" max="8" step="0.1" value="2.5">
   <div class="row"><label for="lensRange">Lens size</label><output id="lensOut">22 mm</output></div>
   <input type="range" id="lensRange" min="8" max="40" step="0.5" value="22">
+  <div class="row"><label for="labelRange">Label distance</label><output id="labelOut">12 mm</output></div>
+  <input type="range" id="labelRange" min="0" max="60" step="1" value="12">
   <button id="btnProj" type="button"><span class="lg"><span class="sw sw-p"></span>Projects</span><span class="n" id="nProj">0</span></button>
   <button id="btnSales" type="button"><span class="lg"><span class="sw sw-s"></span>Plug-in sales</span><span class="n" id="nSales">0</span></button>
   <p class="msg" id="dataMsg">Tick countries and set their numbers. The highest numbers glow hottest.</p>
@@ -1567,7 +1569,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.20/topojson.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/datamaps@0.5.9/dist/datamaps.world.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/datamaps@0.5.9/dist/datamaps.world.hires.min.js"></script>
+<script>if (!window.Datamap && !window.Datamaps) document.write('<script src="https://cdn.jsdelivr.net/npm/datamaps@0.5.9/dist/datamaps.world.min.js"><\/script>');</script>
 <script>
 // =====================================================================
 // Map + lens layer (added). Reads window.primaryPuck, which the tracker
@@ -1587,7 +1590,251 @@
 
   let liftHeight = store.get('puckMap_lift', 2.5);
   let lensMm = store.get('puckMap_lensMm', 22);
+  let labelMm = store.get('puckMap_labelMm', 12);
   const pxPerMmNow = () => store.get('puckVis_pxPerMm', 96 / 25.4);
+
+  // ---------- Every country, for the pickers ----------
+  // [ISO code, name, approx. centre lat, lon]. Places missing from the map outlines get a marker at their centre.
+  const COUNTRY_LIST = [
+    ["AFG", "Afghanistan", 33.9, 67.7],
+    ["ALA", "Åland Islands", 60.2, 20.0],
+    ["ALB", "Albania", 41.2, 20.2],
+    ["DZA", "Algeria", 28.0, 1.7],
+    ["ASM", "American Samoa", -14.3, -170.7],
+    ["AND", "Andorra", 42.5, 1.5],
+    ["AGO", "Angola", -11.2, 17.9],
+    ["AIA", "Anguilla", 18.2, -63.1],
+    ["ATG", "Antigua and Barbuda", 17.1, -61.8],
+    ["ARG", "Argentina", -38.4, -63.6],
+    ["ARM", "Armenia", 40.1, 45.0],
+    ["ABW", "Aruba", 12.5, -70.0],
+    ["AUS", "Australia", -25.3, 133.8],
+    ["AUT", "Austria", 47.5, 14.6],
+    ["AZE", "Azerbaijan", 40.1, 47.6],
+    ["BHS", "Bahamas", 25.0, -77.4],
+    ["BHR", "Bahrain", 26.0, 50.6],
+    ["BGD", "Bangladesh", 23.7, 90.4],
+    ["BRB", "Barbados", 13.2, -59.5],
+    ["BLR", "Belarus", 53.7, 28.0],
+    ["BEL", "Belgium", 50.5, 4.5],
+    ["BLZ", "Belize", 17.2, -88.5],
+    ["BEN", "Benin", 9.3, 2.3],
+    ["BMU", "Bermuda", 32.3, -64.8],
+    ["BTN", "Bhutan", 27.5, 90.4],
+    ["BOL", "Bolivia", -16.3, -63.6],
+    ["BIH", "Bosnia and Herzegovina", 43.9, 17.7],
+    ["BWA", "Botswana", -22.3, 24.7],
+    ["BRA", "Brazil", -14.2, -51.9],
+    ["VGB", "British Virgin Islands", 18.4, -64.6],
+    ["BRN", "Brunei", 4.5, 114.7],
+    ["BGR", "Bulgaria", 42.7, 25.5],
+    ["BFA", "Burkina Faso", 12.2, -1.6],
+    ["BDI", "Burundi", -3.4, 29.9],
+    ["CPV", "Cabo Verde", 16.0, -24.0],
+    ["KHM", "Cambodia", 12.6, 105.0],
+    ["CMR", "Cameroon", 7.4, 12.4],
+    ["CAN", "Canada", 56.1, -106.3],
+    ["CYM", "Cayman Islands", 19.3, -81.3],
+    ["CAF", "Central African Republic", 6.6, 20.9],
+    ["TCD", "Chad", 15.5, 18.7],
+    ["CHL", "Chile", -35.7, -71.5],
+    ["CHN", "China", 35.9, 104.2],
+    ["COL", "Colombia", 4.6, -74.3],
+    ["COM", "Comoros", -11.9, 43.9],
+    ["COG", "Congo", -0.2, 15.8],
+    ["COD", "Congo (Democratic Republic)", -4.0, 21.8],
+    ["COK", "Cook Islands", -21.2, -159.8],
+    ["CRI", "Costa Rica", 9.7, -83.8],
+    ["CIV", "Côte d'Ivoire", 7.5, -5.5],
+    ["HRV", "Croatia", 45.1, 15.2],
+    ["CUB", "Cuba", 21.5, -77.8],
+    ["CUW", "Curaçao", 12.2, -69.0],
+    ["CYP", "Cyprus", 35.1, 33.4],
+    ["CZE", "Czechia", 49.8, 15.5],
+    ["DNK", "Denmark", 56.3, 9.5],
+    ["DJI", "Djibouti", 11.8, 42.6],
+    ["DMA", "Dominica", 15.4, -61.4],
+    ["DOM", "Dominican Republic", 18.7, -70.2],
+    ["ECU", "Ecuador", -1.8, -78.2],
+    ["EGY", "Egypt", 26.8, 30.8],
+    ["SLV", "El Salvador", 13.8, -88.9],
+    ["GNQ", "Equatorial Guinea", 1.7, 10.3],
+    ["ERI", "Eritrea", 15.2, 39.8],
+    ["EST", "Estonia", 58.6, 25.0],
+    ["SWZ", "Eswatini", -26.5, 31.5],
+    ["ETH", "Ethiopia", 9.1, 40.5],
+    ["FLK", "Falkland Islands", -51.8, -59.5],
+    ["FRO", "Faroe Islands", 61.9, -6.9],
+    ["FJI", "Fiji", -17.7, 178.1],
+    ["FIN", "Finland", 61.9, 25.7],
+    ["FRA", "France", 46.2, 2.2],
+    ["GUF", "French Guiana", 3.9, -53.1],
+    ["PYF", "French Polynesia", -17.7, -149.4],
+    ["GAB", "Gabon", -0.8, 11.6],
+    ["GMB", "Gambia", 13.4, -15.3],
+    ["GEO", "Georgia", 42.3, 43.4],
+    ["DEU", "Germany", 51.2, 10.5],
+    ["GHA", "Ghana", 7.9, -1.0],
+    ["GIB", "Gibraltar", 36.1, -5.4],
+    ["GRC", "Greece", 39.1, 21.8],
+    ["GRL", "Greenland", 71.7, -42.6],
+    ["GRD", "Grenada", 12.1, -61.7],
+    ["GLP", "Guadeloupe", 16.3, -61.6],
+    ["GUM", "Guam", 13.4, 144.8],
+    ["GTM", "Guatemala", 15.8, -90.2],
+    ["GGY", "Guernsey", 49.5, -2.6],
+    ["GIN", "Guinea", 9.9, -9.7],
+    ["GNB", "Guinea-Bissau", 11.8, -15.2],
+    ["GUY", "Guyana", 4.9, -58.9],
+    ["HTI", "Haiti", 19.0, -72.3],
+    ["HND", "Honduras", 15.2, -86.2],
+    ["HKG", "Hong Kong", 22.3, 114.2],
+    ["HUN", "Hungary", 47.2, 19.5],
+    ["ISL", "Iceland", 64.9, -19.0],
+    ["IND", "India", 20.6, 79.0],
+    ["IDN", "Indonesia", -0.8, 113.9],
+    ["IRN", "Iran", 32.4, 53.7],
+    ["IRQ", "Iraq", 33.2, 43.7],
+    ["IRL", "Ireland", 53.4, -8.2],
+    ["IMN", "Isle of Man", 54.2, -4.5],
+    ["ISR", "Israel", 31.0, 34.9],
+    ["ITA", "Italy", 41.9, 12.6],
+    ["JAM", "Jamaica", 18.1, -77.3],
+    ["JPN", "Japan", 36.2, 138.3],
+    ["JEY", "Jersey", 49.2, -2.1],
+    ["JOR", "Jordan", 30.6, 36.2],
+    ["KAZ", "Kazakhstan", 48.0, 66.9],
+    ["KEN", "Kenya", -0.0, 37.9],
+    ["KIR", "Kiribati", 1.9, -157.4],
+    ["XKX", "Kosovo", 42.6, 20.9],
+    ["KWT", "Kuwait", 29.3, 47.5],
+    ["KGZ", "Kyrgyzstan", 41.2, 74.8],
+    ["LAO", "Laos", 19.9, 102.5],
+    ["LVA", "Latvia", 56.9, 24.6],
+    ["LBN", "Lebanon", 33.9, 35.9],
+    ["LSO", "Lesotho", -29.6, 28.2],
+    ["LBR", "Liberia", 6.4, -9.4],
+    ["LBY", "Libya", 26.3, 17.2],
+    ["LIE", "Liechtenstein", 47.2, 9.6],
+    ["LTU", "Lithuania", 55.2, 23.9],
+    ["LUX", "Luxembourg", 49.8, 6.1],
+    ["MAC", "Macao", 22.2, 113.5],
+    ["MDG", "Madagascar", -18.8, 46.9],
+    ["MWI", "Malawi", -13.3, 34.3],
+    ["MYS", "Malaysia", 4.2, 102.0],
+    ["MDV", "Maldives", 3.2, 73.2],
+    ["MLI", "Mali", 17.6, -4.0],
+    ["MLT", "Malta", 35.9, 14.4],
+    ["MHL", "Marshall Islands", 7.1, 171.2],
+    ["MTQ", "Martinique", 14.6, -61.0],
+    ["MRT", "Mauritania", 21.0, -10.9],
+    ["MUS", "Mauritius", -20.3, 57.6],
+    ["MYT", "Mayotte", -12.8, 45.2],
+    ["MEX", "Mexico", 23.6, -102.6],
+    ["FSM", "Micronesia", 7.4, 150.6],
+    ["MDA", "Moldova", 47.4, 28.4],
+    ["MCO", "Monaco", 43.7, 7.4],
+    ["MNG", "Mongolia", 46.9, 103.8],
+    ["MNE", "Montenegro", 42.7, 19.4],
+    ["MSR", "Montserrat", 16.7, -62.2],
+    ["MAR", "Morocco", 31.8, -7.1],
+    ["MOZ", "Mozambique", -18.7, 35.5],
+    ["MMR", "Myanmar", 21.9, 95.9],
+    ["NAM", "Namibia", -22.9, 18.5],
+    ["NRU", "Nauru", -0.5, 166.9],
+    ["NPL", "Nepal", 28.4, 84.1],
+    ["NLD", "Netherlands", 52.1, 5.3],
+    ["NCL", "New Caledonia", -20.9, 165.6],
+    ["NZL", "New Zealand", -40.9, 174.9],
+    ["NIC", "Nicaragua", 12.9, -85.2],
+    ["NER", "Niger", 17.6, 8.1],
+    ["NGA", "Nigeria", 9.1, 8.7],
+    ["NIU", "Niue", -19.1, -169.9],
+    ["PRK", "North Korea", 40.3, 127.5],
+    ["MKD", "North Macedonia", 41.6, 21.7],
+    ["MNP", "Northern Mariana Islands", 15.2, 145.7],
+    ["NOR", "Norway", 60.5, 8.5],
+    ["OMN", "Oman", 21.5, 55.9],
+    ["PAK", "Pakistan", 30.4, 69.3],
+    ["PLW", "Palau", 7.5, 134.6],
+    ["PSE", "Palestine", 31.9, 35.2],
+    ["PAN", "Panama", 8.5, -80.8],
+    ["PNG", "Papua New Guinea", -6.3, 143.9],
+    ["PRY", "Paraguay", -23.4, -58.4],
+    ["PER", "Peru", -9.2, -75.0],
+    ["PHL", "Philippines", 12.9, 121.8],
+    ["POL", "Poland", 51.9, 19.1],
+    ["PRT", "Portugal", 39.4, -8.2],
+    ["PRI", "Puerto Rico", 18.2, -66.6],
+    ["QAT", "Qatar", 25.4, 51.2],
+    ["REU", "Réunion", -21.1, 55.5],
+    ["ROU", "Romania", 45.9, 25.0],
+    ["RUS", "Russia", 61.5, 105.3],
+    ["RWA", "Rwanda", -1.9, 29.9],
+    ["BLM", "Saint Barthélemy", 17.9, -62.8],
+    ["SHN", "Saint Helena", -15.9, -5.7],
+    ["KNA", "Saint Kitts and Nevis", 17.4, -62.8],
+    ["LCA", "Saint Lucia", 13.9, -61.0],
+    ["MAF", "Saint Martin", 18.1, -63.1],
+    ["SPM", "Saint Pierre and Miquelon", 46.9, -56.3],
+    ["VCT", "Saint Vincent and the Grenadines", 13.3, -61.2],
+    ["WSM", "Samoa", -13.8, -172.1],
+    ["SMR", "San Marino", 43.9, 12.5],
+    ["STP", "São Tomé and Príncipe", 0.2, 6.6],
+    ["SAU", "Saudi Arabia", 23.9, 45.1],
+    ["SEN", "Senegal", 14.5, -14.5],
+    ["SRB", "Serbia", 44.0, 21.0],
+    ["SYC", "Seychelles", -4.7, 55.5],
+    ["SLE", "Sierra Leone", 8.5, -11.8],
+    ["SGP", "Singapore", 1.35, 103.8],
+    ["SXM", "Sint Maarten", 18.0, -63.1],
+    ["SVK", "Slovakia", 48.7, 19.7],
+    ["SVN", "Slovenia", 46.2, 15.0],
+    ["SLB", "Solomon Islands", -9.6, 160.2],
+    ["SOM", "Somalia", 5.2, 46.2],
+    ["ZAF", "South Africa", -30.6, 22.9],
+    ["KOR", "South Korea", 35.9, 127.8],
+    ["SSD", "South Sudan", 7.9, 30.0],
+    ["ESP", "Spain", 40.5, -3.7],
+    ["LKA", "Sri Lanka", 7.9, 80.8],
+    ["SDN", "Sudan", 12.9, 30.2],
+    ["SUR", "Suriname", 3.9, -56.0],
+    ["SWE", "Sweden", 60.1, 18.6],
+    ["CHE", "Switzerland", 46.8, 8.2],
+    ["SYR", "Syria", 34.8, 39.0],
+    ["TWN", "Taiwan", 23.7, 121.0],
+    ["TJK", "Tajikistan", 38.9, 71.3],
+    ["TZA", "Tanzania", -6.4, 34.9],
+    ["THA", "Thailand", 15.9, 101.0],
+    ["TLS", "Timor-Leste", -8.9, 125.7],
+    ["TGO", "Togo", 8.6, 0.8],
+    ["TON", "Tonga", -21.2, -175.2],
+    ["TTO", "Trinidad and Tobago", 10.7, -61.2],
+    ["TUN", "Tunisia", 33.9, 9.5],
+    ["TUR", "Türkiye", 39.0, 35.2],
+    ["TKM", "Turkmenistan", 38.97, 59.6],
+    ["TCA", "Turks and Caicos Islands", 21.7, -71.8],
+    ["TUV", "Tuvalu", -7.1, 177.6],
+    ["UGA", "Uganda", 1.4, 32.3],
+    ["UKR", "Ukraine", 48.4, 31.2],
+    ["ARE", "United Arab Emirates", 23.4, 53.8],
+    ["GBR", "United Kingdom", 55.4, -3.4],
+    ["USA", "United States", 37.1, -95.7],
+    ["VIR", "US Virgin Islands", 18.3, -64.9],
+    ["URY", "Uruguay", -32.5, -55.8],
+    ["UZB", "Uzbekistan", 41.4, 64.6],
+    ["VUT", "Vanuatu", -15.4, 166.9],
+    ["VAT", "Vatican City", 41.9, 12.45],
+    ["VEN", "Venezuela", 6.4, -66.6],
+    ["VNM", "Vietnam", 14.1, 108.3],
+    ["ESH", "Western Sahara", 24.2, -12.9],
+    ["YEM", "Yemen", 15.6, 48.5],
+    ["ZMB", "Zambia", -13.1, 27.8],
+    ["ZWE", "Zimbabwe", -19.0, 29.2]
+  ];
+  const COUNTRY_BY_KEY = new Map(COUNTRY_LIST.map(([k, n, la, lo]) => [k, { key: k, name: n, lat: la, lon: lo }]));
+  const KEY_BY_NAME = new Map(COUNTRY_LIST.map(([k, n]) => [n.toLowerCase(), k]));
+  window.__countryList = COUNTRY_LIST;
 
   // ---------- Panel + toggles ----------
   const mapPanel = document.getElementById('mapPanel');
@@ -1596,6 +1843,9 @@
   liftRange.value = liftHeight; liftOut.textContent = liftHeight.toFixed(1);
   lensRange.value = lensMm; lensOut.textContent = lensMm + ' mm';
   liftRange.addEventListener('input', () => { liftHeight = parseFloat(liftRange.value); liftOut.textContent = liftHeight.toFixed(1); store.set('puckMap_lift', liftHeight); });
+  const labelRange = document.getElementById('labelRange'), labelOut = document.getElementById('labelOut');
+  labelRange.value = labelMm; labelOut.textContent = labelMm + ' mm';
+  labelRange.addEventListener('input', () => { labelMm = parseFloat(labelRange.value); labelOut.textContent = labelMm + ' mm'; store.set('puckMap_labelMm', labelMm); });
   lensRange.addEventListener('input', () => { lensMm = parseFloat(lensRange.value); lensOut.textContent = lensMm + ' mm'; store.set('puckMap_lensMm', lensMm); sizeLens(); });
   const toggleMapPanel = () => mapPanel.classList.toggle('visible');
   document.getElementById('mapBtn').addEventListener('click', toggleMapPanel);
@@ -1763,6 +2013,44 @@
 
     const BASE = 0.22;
     const countries = [];
+    // One crisp outline per country on the ground plane, drawn over everything: no doubled top/bottom edges at rest
+    const flatMat = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+    function outlineGeometry(shapes) {
+      const pos = [];
+      const addRing = pts => {
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          pos.push(a.x, a.y, 0, b.x, b.y, 0);
+        }
+      };
+      for (const sh of shapes) { addRing(sh.getPoints()); for (const h of sh.holes) addRing(h.getPoints()); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      return g;
+    }
+    function addCountry(shapes, geo, key, name, isMarker) {
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+        color: COLDS.projects.clone(), emissive: COLDS.projects.clone(), transparent: true, opacity: 0 }));
+      mesh.layers.set(1);
+      mesh.scale.z = BASE;
+      // Edges of the raised block: hidden at rest, fade in as it lifts
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), lineMat);
+      edges.layers.set(0); edges.visible = false;
+      mesh.add(edges);
+      const flat = new THREE.LineSegments(outlineGeometry(shapes), flatMat);
+      flat.layers.set(0); flat.renderOrder = 10;
+      mapGroup.add(flat);
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      const centre = new THREE.Vector2((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2);
+      const small = isMarker || Math.hypot(bb.max.x - bb.min.x, bb.max.y - bb.min.y) < 0.8;
+      mesh.userData = { name, key, lift: 0, glow: 0, lineMat, edges, centre, small,
+        colP: COLDS.projects.clone(), colS: COLDS.sales.clone() };
+      mapGroup.add(mesh);
+      countries.push(mesh);
+      box.union(bb);
+    }
     const box = new THREE.Box3();
     fc.features.forEach((f, i) => {
       if (!f.geometry || f.id === 'ATA') return; // leave Antarctica out
@@ -1788,22 +2076,20 @@
       catch (err) { console.warn('extrude failed', f.id, err); return; }
       if (!geo.attributes.position || !geo.attributes.position.count) return;
 
-      const mat = new THREE.MeshLambertMaterial({ color: COLDS.projects.clone(), emissive: COLDS.projects.clone(), transparent: true, opacity: 0 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.layers.set(1);
-      mesh.scale.z = BASE;
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), lineMat);
-      edges.layers.set(0);
-      mesh.add(edges);
-      const name = (f.properties && f.properties.name) || String(f.id);
-      const key = f.id && f.id !== '-99' ? String(f.id) : name;
-      mesh.userData = { name, key, lift: 0, glow: 0, lineMat, colP: COLDS.projects.clone(), colS: COLDS.sales.clone() };
-      mapGroup.add(mesh);
-      countries.push(mesh);
-      geo.computeBoundingBox();
-      box.union(geo.boundingBox);
+      const rawName = (f.properties && f.properties.name) || String(f.id);
+      const key = f.id && f.id !== '-99' ? String(f.id) : (KEY_BY_NAME.get(rawName.toLowerCase()) || rawName);
+      const ref = COUNTRY_BY_KEY.get(key);
+      addCountry(shapes, geo, key, ref ? ref.name : rawName, false);
     });
+    // Countries missing from the outline data get a small round marker at their centre
+    const haveGeo = new Set(countries.map(m => m.userData.key));
+    for (const ref of COUNTRY_BY_KEY.values()) {
+      if (haveGeo.has(ref.key)) continue;
+      const [x, y] = proj(ref.lon, ref.lat);
+      const shape = new THREE.Shape(); shape.absarc(x, y, 0.13, 0, Math.PI * 2, false);
+      const geo = new THREE.ExtrudeGeometry([shape], { depth: 1, bevelEnabled: false, curveSegments: 20 });
+      addCountry([shape], geo, ref.key, ref.name, true);
+    }
     const c = new THREE.Vector3(); box.getCenter(c);
     mapGroup.position.set(-c.x, -c.y, 0);
     ocean.position.x = c.x; ocean.position.y = c.y;
@@ -1833,6 +2119,8 @@
     const raycaster = new THREE.Raycaster();
     raycaster.layers.set(1);
     const ndc = new THREE.Vector2();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // map plane after the scene's rotation
+    const groundHit = new THREE.Vector3(), local = new THREE.Vector3();
 
     return {
       countryList: (() => {
@@ -1840,6 +2128,7 @@
         for (const m of countries) if (!seen.has(m.userData.key)) { seen.add(m.userData.key); list.push({ key: m.userData.key, name: m.userData.name }); }
         return list.sort((a, b) => a.name.localeCompare(b.name));
       })(),
+      raw: { scene, mapGroup },
       setLensSize(px) { const d = Math.max(1, Math.round(px * 2)); lensRenderer.setSize(d, d, false); },
       applyData(d) {
         for (const set of ['projects', 'sales']) {
@@ -1861,6 +2150,17 @@
           raycaster.setFromCamera(ndc, camera);
           const hits = raycaster.intersectObjects(countries, false);
           if (hits.length) hovered = hits[0].object;
+          else if (raycaster.ray.intersectPlane(groundPlane, groundHit)) {
+            // Tiny places are hard to land on exactly: take the nearest one within reach
+            mapGroup.worldToLocal(local.copy(groundHit));
+            let best = null, bestD = 0.45;
+            for (const m of countries) {
+              if (!m.userData.small) continue;
+              const d = Math.hypot(local.x - m.userData.centre.x, local.y - m.userData.centre.y);
+              if (d < bestD) { bestD = d; best = m; }
+            }
+            hovered = best;
+          }
         }
         const k = reduceMotion ? 1 : 1 - Math.exp(-dt * 10);
         ocean.material.opacity = md.t;
@@ -1870,7 +2170,9 @@
           const t = m === hovered ? liftHeight : 0, g = m === hovered ? 1 : 0;
           ud.lift += (t - ud.lift) * k; ud.glow += (g - ud.glow) * k;
           m.scale.z = BASE + ud.lift;
-          ud.lineMat.opacity = 0.55 + 0.45 * ud.glow;
+          const show = ud.lift > 0.02;
+          ud.edges.visible = show;
+          if (show) ud.lineMat.opacity = Math.min(1, ud.lift / 0.4);
           const col = md.which === 'projects' ? ud.colP : ud.colS;
           m.material.color.copy(col);
           m.material.emissive.copy(col).multiplyScalar(0.45 + 0.25 * ud.glow);
@@ -1952,6 +2254,7 @@
   const LABELS = { projects: 'Projects', sales: 'Plug-in sales' };
   // Country list comes from the map; if the 3D view failed, read names straight from the outline data
   const allCountries = map ? map.countryList : (() => {
+    if (window.__countryList) return window.__countryList.map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
     try {
       const DM = window.Datamap || window.Datamaps, topo = DM.prototype.worldTopo;
       const geoms = topo.objects[Object.keys(topo.objects)[0]].geometries;
@@ -2054,7 +2357,7 @@
     if (map) map.update(dt, p, md, lensR);
     if (p) {
       lens.style.left = p.x + 'px'; lens.style.top = p.y + 'px';
-      modeLabels.style.left = p.x + 'px'; modeLabels.style.top = (p.y - lensR - 70 * Math.max(0.6, pxPerMmNow() / 6.5)) + 'px';
+      modeLabels.style.left = p.x + 'px'; modeLabels.style.top = (p.y - lensR - labelMm * pxPerMmNow()) + 'px';
       lblP.classList.toggle('on', md.t >= 0.5 && md.which === 'projects');
       lblS.classList.toggle('on', md.t >= 0.5 && md.which === 'sales');
       lblM.classList.toggle('on', md.t < 0.5);
